@@ -1,0 +1,62 @@
+#!/usr/bin/env ruby
+
+if ARGV.size != 1
+  STDERR.puts("Arguments: <socket_path>")
+  exit(1)
+end
+
+socket_path = ARGV[0]
+
+tidy = Proc.new do
+  File.delete(socket_path)
+  @led.off if @led
+  sleep(3)
+end
+
+trap("EXIT", &tidy)
+
+STATUSES = {
+  "power"  => { :rgb => [255,  96,   0], :duration => 1 },
+  "config" => { :rgb => [255,   0,   0], :duration => 1 },
+  "network"=> { :rgb => [  0,   0, 255], :duration => 1 },
+  "app"    => { :rgb => [  0, 255,   0], :duration => 1 },
+  "off"    => { :rgb => [  0,   0,   0], :duration => 1 },
+}
+
+def status_is_valid?(status)
+  !STATUSES[status].nil?
+end
+
+def action_for_status(status)
+  STATUSES[status]
+end
+
+require 'frankenpins'
+@led = Frankenpins::RGBLED.new(:pins => { :green => 5, :red => 4, :blue => 1 })
+
+require 'thread'
+@queue = Queue.new
+Thread.new do
+  loop do
+    props = @queue.pop
+    puts "Something to do #{props}"
+    @led.rgb(props[:rgb], :duration => props[:duration]) if @led
+  end
+end
+
+require "socket"
+begin
+  UNIXServer.open(socket_path) {|serv|
+    File.chmod(0777, socket_path)
+    loop do
+      puts "Ready to accept"
+      socket = serv.accept
+      status, unix_address = socket.recvfrom(10)
+      is_valid = status_is_valid?(status)
+      socket.puts is_valid ? 'ACCEPTED' : 'REJECTED'
+      @queue << action_for_status(status) if is_valid
+    end
+  }
+ensure
+  tidy.call
+end

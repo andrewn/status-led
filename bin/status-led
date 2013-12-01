@@ -1,0 +1,24 @@
+#!/usr/bin/env ruby
+
+if ARGV.size != 2
+  STDERR.puts("Arguments: <socket_path> <status>")
+  exit(1)
+end
+
+socket_path = ARGV[0]
+status      = ARGV[1]
+
+require "socket"
+
+UNIXSocket.open(ARGV[0]) do |socket|
+  socket.write(status)
+  socket.flush
+  reply = socket.gets.chomp
+  if reply == 'ACCEPTED'
+    STDOUT.puts("State changed to <#{status}>")
+    exit(0)
+  else
+    STDERR.puts("Status <#{status}> not recognised")
+    exit(1)
+  end
+end
